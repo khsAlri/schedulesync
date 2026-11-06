@@ -10,7 +10,20 @@
   <header class="topbar">
     <a class="brand" href="/">schedulesync</a>
     <nav class="nav">
-      {% block nav %}{% endblock %}
+      {% block nav %}
+        {% if current_user %}
+          <a href="/">홈</a>
+          {% if current_user.is_admin %}
+            <a href="/admin/users">계정 관리</a>
+          {% endif %}
+          <a href="/account/password">비밀번호 변경</a>
+          <span class="nav-user">{{ current_user.name }} · {{ role_label(current_user.role) }}</span>
+          <form method="post" action="/logout" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn-link">로그아웃</button>
+          </form>
+        {% endif %}
+      {% endblock %}
     </nav>
   </header>
 

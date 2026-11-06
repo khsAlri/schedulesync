@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == "new" %}새 계정 발급{% else %}계정 수정{% endif %} · schedulesync{% endblock %}
+
+{% block content %}
+<section class="card narrow">
+  <h1>{% if mode == "new" %}새 계정 발급{% else %}계정 수정{% endif %}</h1>
+
+  {% if errors %}
+    <ul class="errors">
+      {% for e in errors %}
+        <li>{{ e }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="post"
+        action="{% if mode == 'new' %}/admin/users/new{% else %}/admin/users/{{ target_user.id }}/edit{% endif %}"
+        class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label>
+      이메일 (로그인 ID)
+      <input type="email" name="email" value="{{ form.email }}" required>
+    </label>
+
+    <label>
+      이름
+      <input type="text" name="name" value="{{ form.name }}" required maxlength="100">
+    </label>
+
+    <label>
+      역할
+      <select name="role" required>
+        {% for r in roles %}
+          <option value="{{ r.value }}" {% if form.role == r.value %}selected{% endif %}>{{ role_label(r) }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      부서
+      <input type="text" name="department" value="{{ form.department }}" maxlength="100">
+    </label>
+
+    <label>
+      슬랙 사용자 ID <span class="muted small">(선택, 예: U01ABCDEF)</span>
+      <input type="text" name="slack_user_id" value="{{ form.slack_user_id }}" maxlength="50">
+    </label>
+
+    {% if mode == "new" %}
+      <label>
+        초기 비밀번호 <span class="muted small">(8자 이상)</span>
+        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      </label>
+    {% else %}
+      <label class="checkbox">
+        <input type="checkbox" name="is_active" {% if form.is_active %}checked{% endif %}>
+        계정 사용 (해제하면 로그인할 수 없습니다)
+      </label>
+    {% endif %}
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">{% if mode == "new" %}발급{% else %}저장{% endif %}</button>
+      <a href="/admin/users">목록으로</a>
+    </div>
+  </form>
+</section>
+
+{% if mode == "edit" %}
+<section class="card narrow">
+  <h2>비밀번호 재설정</h2>
+  <p class="muted small">새 비밀번호를 정해 본인에게 안전하게 전달하세요. 로그인 후 본인이 다시 바꿀 수 있습니다.</p>
+  <form method="post" action="/admin/users/{{ target_user.id }}/password" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      새 비밀번호 <span class="muted small">(8자 이상)</span>
+      <input type="password" name="new_password" required minlength="8" autocomplete="new-password">
+    </label>
+    <button type="submit" class="btn">비밀번호 재설정</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

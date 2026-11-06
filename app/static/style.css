@@ -36,11 +36,17 @@ a:hover {
 
 .nav {
   display: flex;
+  align-items: center;
   gap: 16px;
 }
 
 .nav a {
   color: #cbd5e1;
+}
+
+.nav-user {
+  color: #94a3b8;
+  font-size: 14px;
 }
 
 .container {
@@ -57,8 +63,25 @@ a:hover {
   margin-bottom: 16px;
 }
 
+.card.narrow {
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .muted {
   color: #64748b;
+}
+
+.small {
+  font-size: 13px;
 }
 
 .flash {
@@ -87,6 +110,130 @@ a:hover {
   color: #991b1b;
 }
 
+.errors {
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 6px;
+  padding: 10px 14px 10px 32px;
+  margin: 0 0 12px;
+}
+
+/* 폼 */
+.form label {
+  display: block;
+  margin-bottom: 14px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.form input[type="text"],
+.form input[type="email"],
+.form input[type="password"],
+.form input[type="datetime-local"],
+.form select,
+.form textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 400;
+}
+
+.form label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+form.inline {
+  display: inline;
+  margin: 0;
+}
+
+/* 버튼 */
+.btn {
+  display: inline-block;
+  padding: 8px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2933;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #f1f5f9;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #cbd5e1;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+/* 배지 */
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-admin {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.badge-approver {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-employee {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.badge-inactive {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* 표 */
+.table-wrap {
+  overflow-x: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -102,6 +249,10 @@ td {
 
 th {
   background: #f1f5f9;
+}
+
+.row-inactive td {
+  color: #94a3b8;
 }
 
 .footer {

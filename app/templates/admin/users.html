@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}계정 관리 · schedulesync{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <h1>계정 관리</h1>
+    <a class="btn btn-primary" href="/admin/users/new">새 계정 발급</a>
+  </div>
+
+  {% if users %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>이름</th>
+            <th>이메일</th>
+            <th>역할</th>
+            <th>부서</th>
+            <th>슬랙 ID</th>
+            <th>상태</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+            <tr class="{% if not u.is_active %}row-inactive{% endif %}">
+              <td>{{ u.name }}</td>
+              <td>{{ u.email }}</td>
+              <td><span class="badge badge-{{ u.role.value }}">{{ role_label(u.role) }}</span></td>
+              <td>{{ u.department or "-" }}</td>
+              <td>{{ u.slack_user_id or "미연결" }}</td>
+              <td>
+                {% if u.is_active %}
+                  사용 중
+                {% else %}
+                  <span class="badge badge-inactive">비활성</span>
+                {% endif %}
+              </td>
+              <td><a href="/admin/users/{{ u.id }}/edit">수정</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted">등록된 계정이 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}
