@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}schedulesync{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">schedulesync</a>
+    <nav class="nav">
+      {% block nav %}{% endblock %}
+    </nav>
+  </header>
+
+  <main class="container">
+    {% if flash_messages %}
+      {% for msg in flash_messages %}
+        <div class="flash flash-{{ msg.level }}">{{ msg.text }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    schedulesync · 프로젝트 참여 일정 관리
+  </footer>
+</body>
+</html>
