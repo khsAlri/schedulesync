@@ -1,128 +1,72 @@
 'use strict';
 
-// ===== 설정 =====
 const COLS = 10;
 const ROWS = 20;
 const BLOCK = 30;
-const NEXT_BLOCK = 24;
-const BEST_KEY = 'tetris-best-score';
 
 const COLORS = {
-  I: '#22d3ee',
-  O: '#facc15',
-  T: '#a855f7',
-  S: '#22c55e',
-  Z: '#ef4444',
-  J: '#3b82f6',
-  L: '#f97316',
+  I: '#00bcd4',
+  J: '#3f51b5',
+  L: '#ff9800',
+  O: '#ffeb3b',
+  S: '#4caf50',
+  T: '#9c27b0',
+  Z: '#f44336',
 };
 
 const SHAPES = {
-  I: [
-    [0, 0, 0, 0],
-    [1, 1, 1, 1],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-  ],
-  O: [
-    [1, 1],
-    [1, 1],
-  ],
-  T: [
-    [0, 1, 0],
-    [1, 1, 1],
-    [0, 0, 0],
-  ],
-  S: [
-    [0, 1, 1],
-    [1, 1, 0],
-    [0, 0, 0],
-  ],
-  Z: [
-    [1, 1, 0],
-    [0, 1, 1],
-    [0, 0, 0],
-  ],
-  J: [
-    [1, 0, 0],
-    [1, 1, 1],
-    [0, 0, 0],
-  ],
-  L: [
-    [0, 0, 1],
-    [1, 1, 1],
-    [0, 0, 0],
-  ],
+  I: [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]],
+  J: [[1, 0, 0], [1, 1, 1], [0, 0, 0]],
+  L: [[0, 0, 1], [1, 1, 1], [0, 0, 0]],
+  O: [[1, 1], [1, 1]],
+  S: [[0, 1, 1], [1, 1, 0], [0, 0, 0]],
+  T: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
+  Z: [[1, 1, 0], [0, 1, 1], [0, 0, 0]],
 };
 
-// 한 번에 지운 줄 수에 따른 기본 점수 (레벨을 곱함)
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
-// ===== DOM =====
 const boardCanvas = document.getElementById('board');
 const ctx = boardCanvas.getContext('2d');
 const nextCanvas = document.getElementById('next');
 const nextCtx = nextCanvas.getContext('2d');
-
 const scoreEl = document.getElementById('score');
 const linesEl = document.getElementById('lines');
 const levelEl = document.getElementById('level');
-const bestEl = document.getElementById('best');
+const startBtn = document.getElementById('start');
 
-const overlay = document.getElementById('overlay');
-const overlayTitle = document.getElementById('overlay-title');
-const overlayText = document.getElementById('overlay-text');
-const startBtn = document.getElementById('start-btn');
-const pauseBtn = document.getElementById('pause-btn');
-
-// ===== 상태 =====
-let board = createBoard();
+let board = [];
+let current = null;
+let next = null;
 let bag = [];
-let piece = null;
-let nextType = null;
 let score = 0;
 let lines = 0;
 let level = 1;
-let best = loadBest();
 let dropInterval = 1000;
 let dropCounter = 0;
 let lastTime = 0;
-let animationId = null;
-let state = 'ready'; // ready | playing | paused | over
+let running = false;
+let paused = false;
+let gameOver = false;
 
-// ===== 유틸 =====
 function createBoard() {
   return Array.from({ length: ROWS }, () => Array(COLS).fill(null));
 }
 
-function loadBest() {
-  try {
-    return Number(localStorage.getItem(BEST_KEY)) || 0;
-  } catch (e) {
-    return 0;
-  }
-}
-
-function saveBest(value) {
-  try {
-    localStorage.setItem(BEST_KEY, String(value));
-  } catch (e) {
-    // localStorage 사용 불가 환경은 무시
-  }
-}
-
+// 7개 블록을 섞어 순서대로 꺼내는 방식 (같은 블록이 너무 몰리지 않게)
 function refillBag() {
-  const types = Object.keys(SHAPES);
-  for (let i = types.length - 1; i > 0; i--) {
+  bag = Object.keys(SHAPES);
+  for (let i = bag.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [types[i], types[j]] = [types[j], types[i]];
+    [bag[i], bag[j]] = [bag[j], bag[i]];
   }
-  bag.push(...types);
 }
 
 function takeFromBag() {
-  if (bag.length === 0) refillBag();
-  return bag.shift();
+  if (bag.length === 0) {
+    refillBag();
+  }
+  return bag.pop();
 }
 
 function createPiece(type) {
@@ -131,87 +75,62 @@ function createPiece(type) {
     type,
     matrix,
     x: Math.floor((COLS - matrix[0].length) / 2),
-    y: type === 'I' ? -1 : 0,
+    y: 0,
   };
 }
 
-function collide(matrix, offsetX, offsetY) {
-  for (let r = 0; r < matrix.length; r++) {
-    for (let c = 0; c < matrix[r].length; c++) {
-      if (!matrix[r][c]) continue;
-      const x = offsetX + c;
-      const y = offsetY + r;
-      if (x < 0 || x >= COLS || y >= ROWS) return true;
-      if (y >= 0 && board[y][x]) return true;
+function collides(matrix, offsetX, offsetY) {
+  for (let y = 0; y < matrix.length; y++) {
+    for (let x = 0; x < matrix[y].length; x++) {
+      if (!matrix[y][x]) continue;
+      const bx = offsetX + x;
+      const by = offsetY + y;
+      if (bx < 0 || bx >= COLS || by >= ROWS) return true;
+      if (by >= 0 && board[by][bx]) return true;
     }
   }
   return false;
 }
 
-function rotateMatrix(matrix, dir) {
+// 시계 방향 90도 회전
+function rotate(matrix) {
   const n = matrix.length;
-  const result = Array.from({ length: n }, () => Array(n).fill(0));
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      if (dir > 0) {
-        result[c][n - 1 - r] = matrix[r][c]; // 시계 방향
-      } else {
-        result[n - 1 - c][r] = matrix[r][c]; // 반시계 방향
-      }
-    }
-  }
-  return result;
+  return matrix.map((row, y) => row.map((_, x) => matrix[n - 1 - x][y]));
 }
 
-// ===== 게임 동작 =====
-function spawn() {
-  piece = createPiece(nextType);
-  nextType = takeFromBag();
-  if (collide(piece.matrix, piece.x, piece.y)) {
-    gameOver();
-    return false;
-  }
-  return true;
-}
-
-function move(dx) {
-  if (!collide(piece.matrix, piece.x + dx, piece.y)) {
-    piece.x += dx;
-  }
-}
-
-function rotate(dir) {
-  if (piece.type === 'O') return;
-  const rotated = rotateMatrix(piece.matrix, dir);
+function rotatePiece() {
+  const rotated = rotate(current.matrix);
+  // 벽에 막히면 좌우로 조금씩 밀어서 회전 시도
   const kicks = [0, -1, 1, -2, 2];
-  for (const k of kicks) {
-    if (!collide(rotated, piece.x + k, piece.y)) {
-      piece.matrix = rotated;
-      piece.x += k;
+  for (const kick of kicks) {
+    if (!collides(rotated, current.x + kick, current.y)) {
+      current.matrix = rotated;
+      current.x += kick;
       return;
     }
   }
-  // 바닥에 닿아서 회전이 막힌 경우 한 칸 위로 올려서 시도
-  if (!collide(rotated, piece.x, piece.y - 1)) {
-    piece.matrix = rotated;
-    piece.y -= 1;
+}
+
+function move(dir) {
+  if (!collides(current.matrix, current.x + dir, current.y)) {
+    current.x += dir;
   }
 }
 
-function softDrop() {
-  if (!collide(piece.matrix, piece.x, piece.y + 1)) {
-    piece.y += 1;
-    score += 1;
-    updateHUD();
+function step() {
+  if (!collides(current.matrix, current.x, current.y + 1)) {
+    current.y++;
   } else {
     lockPiece();
   }
   dropCounter = 0;
 }
 
-function gravityDrop() {
-  if (!collide(piece.matrix, piece.x, piece.y + 1)) {
-    piece.y += 1;
+function softDrop() {
+  if (!collides(current.matrix, current.x, current.y + 1)) {
+    current.y++;
+    score += 1;
+    updateStats();
   } else {
     lockPiece();
   }
@@ -220,188 +139,189 @@ function gravityDrop() {
 
 function hardDrop() {
   let distance = 0;
-  while (!collide(piece.matrix, piece.x, piece.y + 1)) {
-    piece.y += 1;
-    distance += 1;
+  while (!collides(current.matrix, current.x, current.y + 1)) {
+    current.y++;
+    distance++;
   }
   score += distance * 2;
+  updateStats();
   lockPiece();
   dropCounter = 0;
 }
 
+function ghostY() {
+  let y = current.y;
+  while (!collides(current.matrix, current.x, y + 1)) {
+    y++;
+  }
+  return y;
+}
+
 function lockPiece() {
-  let overflow = false;
-  piece.matrix.forEach((row, r) => {
-    row.forEach((value, c) => {
+  current.matrix.forEach((row, y) => {
+    row.forEach((value, x) => {
       if (!value) return;
-      const y = piece.y + r;
-      const x = piece.x + c;
-      if (y < 0) {
-        overflow = true;
-      } else {
-        board[y][x] = piece.type;
+      const by = current.y + y;
+      if (by >= 0) {
+        board[by][current.x + x] = current.type;
       }
     });
   });
-
-  if (overflow) {
-    gameOver();
-    return;
-  }
-
   clearLines();
-  updateHUD();
   spawn();
 }
 
 function clearLines() {
   let cleared = 0;
-  for (let r = ROWS - 1; r >= 0; r--) {
-    if (board[r].every((cell) => cell !== null)) {
-      board.splice(r, 1);
+  for (let y = ROWS - 1; y >= 0; y--) {
+    if (board[y].every((cell) => cell)) {
+      board.splice(y, 1);
       board.unshift(Array(COLS).fill(null));
-      cleared += 1;
-      r += 1; // 당겨 내려온 줄을 다시 검사
+      cleared++;
+      y++;
     }
   }
   if (cleared > 0) {
-    score += LINE_SCORES[cleared] * level;
     lines += cleared;
+    score += LINE_SCORES[cleared] * level;
     level = Math.floor(lines / 10) + 1;
-    dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    dropInterval = Math.max(100, 1000 - (level - 1) * 100);
+    updateStats();
   }
 }
 
-function getGhostY() {
-  let y = piece.y;
-  while (!collide(piece.matrix, piece.x, y + 1)) {
-    y += 1;
+function spawn() {
+  current = createPiece(next);
+  next = takeFromBag();
+  drawNext();
+  if (collides(current.matrix, current.x, current.y)) {
+    endGame();
   }
-  return y;
 }
 
-// ===== 그리기 =====
+function endGame() {
+  running = false;
+  gameOver = true;
+  startBtn.textContent = '다시 시작';
+}
+
+function updateStats() {
+  scoreEl.textContent = score;
+  linesEl.textContent = lines;
+  levelEl.textContent = level;
+}
+
 function drawCell(context, x, y, color, size, alpha = 1) {
   context.globalAlpha = alpha;
   context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  context.fillStyle = 'rgba(255, 255, 255, 0.18)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  context.fillRect(x * size, y * size, size, size);
+  context.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+  context.strokeRect(x * size + 0.5, y * size + 0.5, size - 1, size - 1);
   context.globalAlpha = 1;
 }
 
-function drawGrid() {
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.08)';
-  ctx.lineWidth = 1;
-  for (let c = 1; c < COLS; c++) {
-    ctx.beginPath();
-    ctx.moveTo(c * BLOCK + 0.5, 0);
-    ctx.lineTo(c * BLOCK + 0.5, ROWS * BLOCK);
-    ctx.stroke();
-  }
-  for (let r = 1; r < ROWS; r++) {
-    ctx.beginPath();
-    ctx.moveTo(0, r * BLOCK + 0.5);
-    ctx.lineTo(COLS * BLOCK, r * BLOCK + 0.5);
-    ctx.stroke();
-  }
-}
-
-function drawMatrix(matrix, offsetX, offsetY, color, alpha) {
-  matrix.forEach((row, r) => {
-    row.forEach((value, c) => {
-      if (!value) return;
-      const y = offsetY + r;
-      if (y < 0) return;
-      drawCell(ctx, offsetX + c, y, color, BLOCK, alpha);
+function drawMatrix(context, matrix, offsetX, offsetY, color, size, alpha) {
+  matrix.forEach((row, y) => {
+    row.forEach((value, x) => {
+      if (value && offsetY + y >= 0) {
+        drawCell(context, offsetX + x, offsetY + y, color, size, alpha);
+      }
     });
   });
+}
+
+function drawOverlay(text) {
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, boardCanvas.width / 2, boardCanvas.height / 2);
 }
 
 function draw() {
-  ctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
-  drawGrid();
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
 
-  board.forEach((row, r) => {
-    row.forEach((type, c) => {
-      if (type) drawCell(ctx, c, r, COLORS[type], BLOCK);
+  // 배경 격자
+  ctx.strokeStyle = '#1e1e1e';
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * BLOCK + 0.5, 0);
+    ctx.lineTo(x * BLOCK + 0.5, ROWS * BLOCK);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * BLOCK + 0.5);
+    ctx.lineTo(COLS * BLOCK, y * BLOCK + 0.5);
+    ctx.stroke();
+  }
+
+  board.forEach((row, y) => {
+    row.forEach((type, x) => {
+      if (type) {
+        drawCell(ctx, x, y, COLORS[type], BLOCK);
+      }
     });
   });
 
-  if (piece && state !== 'over') {
-    const color = COLORS[piece.type];
-    drawMatrix(piece.matrix, piece.x, getGhostY(), color, 0.22);
-    drawMatrix(piece.matrix, piece.x, piece.y, color, 1);
+  if (current && !gameOver) {
+    drawMatrix(ctx, current.matrix, current.x, ghostY(), COLORS[current.type], BLOCK, 0.25);
+    drawMatrix(ctx, current.matrix, current.x, current.y, COLORS[current.type], BLOCK, 1);
   }
 
-  drawNext();
+  if (gameOver) {
+    drawOverlay('게임 오버');
+  } else if (paused) {
+    drawOverlay('일시정지');
+  }
 }
 
 function drawNext() {
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
-  if (!nextType) return;
+  nextCtx.fillStyle = '#111';
+  nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+  if (!next) return;
 
-  const matrix = SHAPES[nextType];
-  let minR = Infinity;
-  let maxR = -1;
-  let minC = Infinity;
-  let maxC = -1;
-  matrix.forEach((row, r) => {
-    row.forEach((value, c) => {
-      if (!value) return;
-      minR = Math.min(minR, r);
-      maxR = Math.max(maxR, r);
-      minC = Math.min(minC, c);
-      maxC = Math.max(maxC, c);
+  const size = 24;
+  const cells = [];
+  SHAPES[next].forEach((row, y) => {
+    row.forEach((value, x) => {
+      if (value) cells.push([x, y]);
     });
   });
 
-  const w = (maxC - minC + 1) * NEXT_BLOCK;
-  const h = (maxR - minR + 1) * NEXT_BLOCK;
-  const ox = (nextCanvas.width - w) / 2;
-  const oy = (nextCanvas.height - h) / 2;
+  const xs = cells.map((c) => c[0]);
+  const ys = cells.map((c) => c[1]);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const width = Math.max(...xs) - minX + 1;
+  const height = Math.max(...ys) - minY + 1;
+  const offsetX = (nextCanvas.width / size - width) / 2 - minX;
+  const offsetY = (nextCanvas.height / size - height) / 2 - minY;
 
-  nextCtx.save();
-  nextCtx.translate(ox, oy);
-  matrix.forEach((row, r) => {
-    row.forEach((value, c) => {
-      if (value) drawCell(nextCtx, c - minC, r - minR, COLORS[nextType], NEXT_BLOCK);
-    });
+  cells.forEach(([x, y]) => {
+    drawCell(nextCtx, x + offsetX, y + offsetY, COLORS[next], size);
   });
-  nextCtx.restore();
 }
 
-function updateHUD() {
-  scoreEl.textContent = score.toLocaleString();
-  linesEl.textContent = lines;
-  levelEl.textContent = level;
-  bestEl.textContent = Math.max(best, score).toLocaleString();
-}
-
-// ===== 루프 / 상태 전환 =====
-function loop(time) {
-  if (state !== 'playing') return;
+function update(time) {
   const delta = time - lastTime;
   lastTime = time;
-  dropCounter += delta;
-  if (dropCounter > dropInterval) {
-    gravityDrop();
+
+  if (!paused) {
+    dropCounter += delta;
+    if (dropCounter > dropInterval) {
+      step();
+    }
   }
+
   draw();
-  if (state === 'playing') {
-    animationId = requestAnimationFrame(loop);
+
+  if (running) {
+    requestAnimationFrame(update);
   }
-}
-
-function showOverlay(title, text, buttonLabel) {
-  overlayTitle.textContent = title;
-  overlayText.textContent = text;
-  startBtn.textContent = buttonLabel;
-  overlay.classList.remove('hidden');
-}
-
-function hideOverlay() {
-  overlay.classList.add('hidden');
 }
 
 function startGame() {
@@ -412,127 +332,59 @@ function startGame() {
   level = 1;
   dropInterval = 1000;
   dropCounter = 0;
-  nextType = takeFromBag();
-  state = 'playing';
-  pauseBtn.textContent = '일시정지';
-  hideOverlay();
-  updateHUD();
-  if (!spawn()) return;
-  cancelAnimationFrame(animationId);
-  lastTime = performance.now();
-  animationId = requestAnimationFrame(loop);
-}
+  paused = false;
+  gameOver = false;
 
-function togglePause() {
-  if (state === 'playing') {
-    state = 'paused';
-    cancelAnimationFrame(animationId);
-    pauseBtn.textContent = '계속하기';
-    showOverlay('일시정지', 'P 또는 Esc 키로 계속할 수 있습니다', '계속하기');
-  } else if (state === 'paused') {
-    state = 'playing';
-    pauseBtn.textContent = '일시정지';
-    hideOverlay();
+  next = takeFromBag();
+  spawn();
+  updateStats();
+
+  startBtn.textContent = '다시 시작';
+  // 버튼에 포커스가 남아 있으면 Space 키가 버튼을 다시 누르므로 해제
+  startBtn.blur();
+
+  if (!running) {
+    running = true;
     lastTime = performance.now();
-    animationId = requestAnimationFrame(loop);
+    requestAnimationFrame(update);
   }
 }
 
-function gameOver() {
-  state = 'over';
-  cancelAnimationFrame(animationId);
-  if (score > best) {
-    best = score;
-    saveBest(best);
-  }
-  updateHUD();
-  draw();
-  showOverlay(
-    'GAME OVER',
-    `점수: ${score.toLocaleString()}\n라인: ${lines} / 레벨: ${level}`,
-    '다시 하기'
-  );
-}
+document.addEventListener('keydown', (event) => {
+  if (!running || gameOver || !current) return;
 
-// ===== 입력 =====
-function handleAction(action) {
-  if (state !== 'playing') return;
-  switch (action) {
-    case 'left':
+  if (event.code === 'KeyP') {
+    paused = !paused;
+    return;
+  }
+  if (paused) return;
+
+  switch (event.code) {
+    case 'ArrowLeft':
       move(-1);
       break;
-    case 'right':
+    case 'ArrowRight':
       move(1);
       break;
-    case 'down':
+    case 'ArrowDown':
       softDrop();
       break;
-    case 'rotate':
-      rotate(1);
+    case 'ArrowUp':
+      rotatePiece();
       break;
-    case 'rotateCCW':
-      rotate(-1);
-      break;
-    case 'drop':
+    case 'Space':
       hardDrop();
       break;
     default:
       return;
   }
-  if (state === 'playing') draw();
-}
-
-const KEY_ACTIONS = {
-  ArrowLeft: 'left',
-  ArrowRight: 'right',
-  ArrowDown: 'down',
-  ArrowUp: 'rotate',
-  KeyX: 'rotate',
-  KeyZ: 'rotateCCW',
-  Space: 'drop',
-};
-
-document.addEventListener('keydown', (event) => {
-  if (event.code === 'Enter' && (state === 'ready' || state === 'over')) {
-    event.preventDefault();
-    startGame();
-    return;
-  }
-
-  if (event.code === 'KeyP' || event.code === 'Escape') {
-    event.preventDefault();
-    togglePause();
-    return;
-  }
-
-  const action = KEY_ACTIONS[event.code];
-  if (!action) return;
   event.preventDefault();
-  if (event.code === 'Space' && event.repeat) return;
-  handleAction(action);
 });
 
-startBtn.addEventListener('click', () => {
-  startBtn.blur();
-  if (state === 'paused') {
-    togglePause();
-  } else {
-    startGame();
-  }
-});
+startBtn.addEventListener('click', startGame);
 
-pauseBtn.addEventListener('click', () => {
-  pauseBtn.blur();
-  togglePause();
-});
-
-document.querySelectorAll('.touch-controls [data-action]').forEach((button) => {
-  button.addEventListener('click', () => {
-    button.blur();
-    handleAction(button.dataset.action);
-  });
-});
-
-// ===== 초기 화면 =====
-updateHUD();
+// 초기 화면
+board = createBoard();
 draw();
+drawOverlay('시작 버튼을 누르세요');
+drawNext();
