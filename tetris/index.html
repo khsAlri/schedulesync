@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tetris</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <h1 class="title">TETRIS</h1>
+
+    <div class="game">
+      <div class="board-wrap">
+        <canvas id="board" width="300" height="600" aria-label="테트리스 게임판"></canvas>
+        <div id="overlay" class="overlay">
+          <h2 id="overlay-title">TETRIS</h2>
+          <p id="overlay-text">시작 버튼이나 Enter 키를 누르세요</p>
+          <button id="start-btn" type="button" class="btn primary">게임 시작</button>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <section class="card">
+          <h3>다음 블록</h3>
+          <canvas id="next" width="120" height="120"></canvas>
+        </section>
+
+        <section class="card stats">
+          <div class="stat"><span>점수</span><strong id="score">0</strong></div>
+          <div class="stat"><span>라인</span><strong id="lines">0</strong></div>
+          <div class="stat"><span>레벨</span><strong id="level">1</strong></div>
+          <div class="stat"><span>최고 점수</span><strong id="best">0</strong></div>
+        </section>
+
+        <section class="card help">
+          <h3>조작법</h3>
+          <ul>
+            <li><kbd>←</kbd> <kbd>→</kbd> 이동</li>
+            <li><kbd>↑</kbd> / <kbd>X</kbd> 시계 방향 회전</li>
+            <li><kbd>Z</kbd> 반시계 방향 회전</li>
+            <li><kbd>↓</kbd> 소프트 드롭</li>
+            <li><kbd>Space</kbd> 하드 드롭</li>
+            <li><kbd>P</kbd> / <kbd>Esc</kbd> 일시정지</li>
+          </ul>
+        </section>
+
+        <button id="pause-btn" type="button" class="btn">일시정지</button>
+      </aside>
+    </div>
+
+    <div class="touch-controls" aria-label="터치 조작 버튼">
+      <button type="button" class="btn" data-action="left">◀</button>
+      <button type="button" class="btn" data-action="rotate">⟳</button>
+      <button type="button" class="btn" data-action="right">▶</button>
+      <button type="button" class="btn" data-action="down">▼</button>
+      <button type="button" class="btn" data-action="drop">⤓</button>
+    </div>
+  </main>
+
+  <script src="tetris.js"></script>
+</body>
+</html>
