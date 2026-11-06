@@ -1,0 +1,18 @@
+# 환경 변수 (비밀 값 포함)
+.env
+
+# 로컬 DB
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 편집기
+.vscode/
+.idea/
+.DS_Store
