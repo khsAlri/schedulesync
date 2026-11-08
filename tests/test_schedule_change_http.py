@@ -19,6 +19,7 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.testclient import TestClient
 from itsdangerous import SignatureExpired
 from sqlalchemy import create_engine, select
@@ -47,6 +48,9 @@ with patch.dict(
     )
     from app.routers import auth, schedule_changes
     from app.security import hash_password
+
+
+STATIC_DIR = Path(__file__).resolve().parents[1] / "app" / "static"
 
 
 class HiddenInputs(HTMLParser):
@@ -131,6 +135,13 @@ class ScheduleChangeHTTPTests(unittest.TestCase):
             secret_key=settings.secret_key,
             same_site="lax",
         )
+        # base.html이 url_for('static', ...)을 사용하므로
+        # 테스트 전용 앱에도 같은 이름의 경로가 필요하다.
+        app.mount(
+            "/static",
+            StaticFiles(directory=str(STATIC_DIR)),
+            name="static",
+        )
 
         def test_db():
             with Session(self.engine, autoflush=False) as db:
@@ -158,6 +169,7 @@ class ScheduleChangeHTTPTests(unittest.TestCase):
     def login(self, user_id):
         self.client.cookies.clear()
         page = self.client.get("/login")
+        self.assertEqual(page.status_code, 200)
         response = self.client.post("/login", data={
             "csrf_token": hidden_value(page, "csrf_token"),
             "email": f"user{user_id}@example.com",
@@ -208,6 +220,18 @@ class ScheduleChangeHTTPTests(unittest.TestCase):
                 "kind": kind,
                 "decision": "approve",
             },
+        )
+
+    def test_login_template_and_static_file_are_available(self):
+        page = self.client.get("/login")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("/static/style.css", page.text)
+        self.assertTrue(hidden_value(page, "csrf_token"))
+
+        stylesheet = self.client.get("/static/style.css")
+        self.assertEqual(stylesheet.status_code, 200)
+        self.assertIn(
+            "text/css", stylesheet.headers.get("content-type", "")
         )
 
     def test_login_is_required(self):
