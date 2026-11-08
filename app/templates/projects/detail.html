@@ -7,7 +7,10 @@
   <div class="card-header">
     <h1>{{ project.name }}</h1>
     {% if current_user.is_approver and current_user.id == project.owner_id %}
-      <a class="btn" href="/projects/{{ project.id }}/edit">프로젝트 수정</a>
+      <div class="actions">
+        <a class="btn" href="/projects/{{ project.id }}/edit">프로젝트 수정</a>
+        <a class="btn btn-primary" href="/assignments?project_id={{ project.id }}">직원 배정</a>
+      </div>
     {% endif %}
   </div>
 
@@ -39,10 +42,7 @@
     {% endfor %}
   </ul>
 
-  {% if current_user.is_approver and current_user.id == project.owner_id %}
-    <p class="muted small">직원 배정·수락·승인 기능은 4단계에서 추가됩니다.</p>
-  {% endif %}
-
+  <p><a href="/assignments">관련 배정·승인 확인</a></p>
   <p><a href="/projects">프로젝트 목록으로</a></p>
 </section>
 {% endblock %}
