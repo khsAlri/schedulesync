@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}알림 · schedulesync{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h1>내 알림</h1>
+  <p>미확인 알림: <strong>{{ unread_total }}개</strong></p>
+  <p class="muted small">
+    본인에게 온 알림만 표시합니다. 목록을 열거나 관련 화면으로 이동하는 것만으로
+    읽음 처리되지 않습니다. 새로고침하거나 페이지를 이동하면 새 알림을 확인할 수 있습니다.
+  </p>
+
+  <div class="actions">
+    <a href="/notifications" {% if not unread_only %}aria-current="page"{% endif %}>전체</a>
+    <a href="/notifications?unread_only=true" {% if unread_only %}aria-current="page"{% endif %}>미확인만</a>
+    {% if unread_total %}
+      <form method="post" action="/notifications/read-all" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn">모두 읽음</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+
+{% for notification in notifications %}
+  <section class="card">
+    <p>
+      {% if not notification.is_read %}
+        <strong>미확인</strong>
+      {% else %}
+        <span class="muted">읽음</span>
+      {% endif %}
+      · {{ notification.created_at.strftime("%Y-%m-%d %H:%M") }}
+    </p>
+
+    {% for line in notification.message.splitlines() %}
+      <div>{{ line }}</div>
+    {% endfor %}
+
+    <div class="actions">
+      {% if safe_links.get(notification.id) %}
+        <a href="{{ safe_links[notification.id] }}">관련 화면으로 이동</a>
+      {% endif %}
+      {% if not notification.is_read %}
+        <form method="post" action="/notifications/{{ notification.id }}/read" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn">읽음 처리</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+{% else %}
+  <section class="card">
+    <p>{% if unread_only %}표시할 미확인 알림이 없습니다.{% else %}표시할 알림이 없습니다.{% endif %}</p>
+  </section>
+{% endfor %}
+
+<nav class="actions" aria-label="알림 페이지">
+  {% if page > 1 %}
+    <a href="/notifications?page={{ page - 1 }}&amp;unread_only={{ 'true' if unread_only else 'false' }}">이전</a>
+  {% endif %}
+  <span>{{ page }}페이지</span>
+  {% if has_next %}
+    <a href="/notifications?page={{ page + 1 }}&amp;unread_only={{ 'true' if unread_only else 'false' }}">다음</a>
+  {% endif %}
+</nav>
+{% endblock %}

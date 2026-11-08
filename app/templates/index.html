@@ -13,6 +13,7 @@
   <div class="actions">
     <a class="btn btn-primary" href="/projects">프로젝트 보기</a>
     <a class="btn" href="/assignments">배정·승인</a>
+    <a class="btn" href="/schedule-changes">일정 변경 요청</a>
     {% if current_user.is_approver %}
       <a class="btn" href="/projects/new">프로젝트 등록</a>
     {% endif %}
@@ -25,19 +26,27 @@
     <p class="muted">
       자신이 등록한 프로젝트에 직원을 배정할 수 있습니다.
       일반 직원이 수락한 배정은 배정한 허가권자를 포함한 전원 승인이 필요합니다.
-      본인에게 지정된 승인 요청도 배정·승인 화면에서 처리하세요.
+      본인에게 지정된 승인 요청은 배정·승인 화면에서 처리하세요.
+    </p>
+    <p class="muted">
+      확정 참여자가 있는 프로젝트의 일정은 프로젝트 상세 화면의 일정 변경 버튼에서 처리하세요.
+      다른 등록자의 프로젝트와 겹치면 상대 등록자의 승인과 영향을 받는 참여자의 동의가 필요합니다.
     </p>
   {% elif current_user.is_admin %}
-    <p class="muted">시스템 관리자는 계정을 발급하고 관리합니다. 프로젝트 배정과 승인은 허가권자가 처리합니다.</p>
+    <p class="muted">
+      시스템 관리자는 계정을 발급하고 관리합니다.
+      프로젝트 배정과 승인은 허가권자가 처리합니다.
+    </p>
   {% else %}
     <p class="muted">
       배정·승인 화면에서 본인에게 온 배정을 수락하거나 거절할 수 있습니다.
       수락 후 허가권자 전원이 승인하면 참여가 확정됩니다.
+      일정 변경 요청 화면에서는 본인에게 지정된 변경 동의를 처리할 수 있습니다.
     </p>
   {% endif %}
 
   <p class="muted small">
-    확정 후 일정 변경 승인과 사이트 내 알림·슬랙 DM 발송은 아직 구현되지 않았습니다.
+    사이트 내 알림·슬랙 DM 발송은 아직 구현되지 않았습니다.
   </p>
 </section>
 {% endblock %}

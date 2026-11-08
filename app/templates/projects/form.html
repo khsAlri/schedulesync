@@ -16,9 +16,15 @@
 
   {% if schedule_locked %}
     <div class="flash flash-warning">
-      진행 중인 배정 또는 일정 변경 요청이 있어 일정을 직접 수정할 수 없습니다.
+      진행 중인 배정 또는 일정 변경 요청이 있어 여기서는 일정을 직접 수정할 수 없습니다.
       이름과 설명은 수정할 수 있습니다.
-      일정 변경 승인 기능은 5단계에서 추가됩니다.
+      {% if project %}
+        확정 참여자가 있는 프로젝트는
+        <a href="/schedule-changes/projects/{{ project.id }}/new">일정 변경 화면</a>을 이용하세요.
+        수락·승인 대기 배정은 먼저 처리해야 합니다.
+        기존 변경 요청이 대기 중이면
+        <a href="/schedule-changes">요청 목록</a>에서 처리하거나 취소하세요.
+      {% endif %}
     </div>
   {% endif %}
 

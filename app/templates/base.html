@@ -15,6 +15,13 @@
           <a href="/">홈</a>
           <a href="/projects">프로젝트</a>
           <a href="/assignments">배정·승인</a>
+          <a href="/schedule-changes">일정 변경</a>
+          <a href="/notifications">
+            알림
+            {% if request.state.unread_notification_count %}
+              ({{ request.state.unread_notification_count }})
+            {% endif %}
+          </a>
           {% if current_user.is_admin %}
             <a href="/admin/users">계정 관리</a>
           {% endif %}

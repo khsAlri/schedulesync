@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}일정 변경 요청 · schedulesync{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h1>일정 변경 요청</h1>
+  <p class="muted">
+    내가 생성한 요청, 내 프로젝트의 요청, 내가 응답자로 지정된 요청을 표시합니다.
+    새 요청은 본인 프로젝트 상세 화면의 일정 변경 버튼에서 생성하세요.
+  </p>
+  <p class="muted small">
+    요청 이후 관련 일정·참여자·계정 상태가 달라지면 반영이 차단됩니다.
+    요청자가 취소한 뒤 다시 미리보고 요청해야 합니다.
+    알림 발송은 아직 연결되지 않았습니다.
+  </p>
+</section>
+
+{% for entry in entries %}
+  {% set item = entry.record %}
+  <section class="card">
+    <h2>#{{ item.id }} · <a href="/projects/{{ item.project_id }}">{{ item.project.name }}</a></h2>
+    <p>
+      요청자: {{ item.requested_by.name }}
+      · 상태: <strong>{{ status_labels[item.status.value] }}</strong>
+      · 요청 시각: {{ item.created_at.strftime("%Y-%m-%d %H:%M") }}
+    </p>
+
+    {% if entry.error %}
+      <div class="flash flash-error">{{ entry.error }}</div>
+    {% endif %}
+
+    {% if entry.snapshot %}
+      <h3>요청 당시 기존 일정</h3>
+      <ul>
+        {% for project in entry.snapshot.get("projects", []) if project.id == item.project_id %}
+          {% for schedule in project.schedules %}
+            <li>{{ schedule.start_at.replace("T", " ") }} ~ {{ schedule.end_at.replace("T", " ") }}</li>
+          {% endfor %}
+        {% endfor %}
+      </ul>
+
+      <h3>요청 당시 겹침</h3>
+      <ul>
+        {% for user_id, project_id, owner_id in entry.snapshot.get("conflicts", []) %}
+          <li>
+            {{ names.get(user_id, user_id) }}
+            · <a href="/projects/{{ project_id }}">상대 프로젝트 #{{ project_id }}</a>
+            · 등록자 {{ names.get(owner_id, owner_id) }}
+          </li>
+        {% else %}
+          <li>없음</li>
+        {% endfor %}
+      </ul>
+
+      <details>
+        <summary>요청 당시 관련 프로젝트 일정</summary>
+        {% for project in entry.snapshot.get("projects", []) if project.id != item.project_id %}
+          <p><a href="/projects/{{ project.id }}">프로젝트 #{{ project.id }}</a></p>
+          <ul>
+            {% for schedule in project.schedules %}
+              <li>{{ schedule.start_at.replace("T", " ") }} ~ {{ schedule.end_at.replace("T", " ") }}</li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      </details>
+    {% else %}
+      <p class="flash flash-warning">
+        요청 당시 기준 기록을 읽을 수 없습니다.
+        승인 반영이 차단될 수 있으므로 요청자는 취소 후 다시 요청하세요.
+      </p>
+    {% endif %}
+
+    <h3>요청한 변경 일정</h3>
+    <ul>
+      {% for start, end in entry.schedules %}
+        <li>{{ start.strftime("%Y-%m-%d %H:%M") }} ~ {{ end.strftime("%Y-%m-%d %H:%M") }}</li>
+      {% else %}
+        <li>표시할 수 있는 일정이 없습니다.</li>
+      {% endfor %}
+    </ul>
+
+    <h3>승인·동의 내역</h3>
+    <ul>
+      {% for response in item.responses %}
+        <li>
+          {{ response.user.name }} · {{ kind_labels[response.kind.value] }}
+          · {{ decision_labels[response.decision.value] }}
+          {% if response.decided_at %}
+            · {{ response.decided_at.strftime("%Y-%m-%d %H:%M") }}
+          {% endif %}
+
+          {% if item.status.value == "pending" and response.user_id == current_user.id and response.decision.value == "pending" %}
+            <form method="post" action="/schedule-changes/{{ item.id }}/respond" class="actions">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="kind" value="{{ response.kind.value }}">
+              <button class="btn btn-primary" name="decision" value="approve" type="submit">
+                {% if response.kind.value == "approver_approval" %}승인{% else %}동의{% endif %}
+              </button>
+              <button class="btn" name="decision" value="reject" type="submit">거부</button>
+            </form>
+          {% endif %}
+        </li>
+      {% else %}
+        <li>별도 응답 불필요</li>
+      {% endfor %}
+    </ul>
+
+    {% if item.status.value == "pending" and item.requested_by_id == current_user.id %}
+      <form method="post" action="/schedule-changes/{{ item.id }}/cancel">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn" type="submit">변경 요청 취소</button>
+      </form>
+    {% endif %}
+  </section>
+{% else %}
+  <section class="card"><p>관련 일정 변경 요청이 없습니다.</p></section>
+{% endfor %}
+{% endblock %}

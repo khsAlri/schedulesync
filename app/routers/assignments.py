@@ -1,20 +1,22 @@
 """배정·수락·승인 화면과 POST 처리."""
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import or_, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.assignment_rules import RuleViolation
-from app.assignment_service import (
+from app.assignment_notifications import (
     create_assignment,
     decide_assignment,
     respond_assignment,
 )
+from app.config import settings
 from app.database import get_db
 from app.deps import require_user, verify_csrf
 from app.models import Approval, Assignment, Project, Role, User
+from app.notification_service import dispatch_notifications
 from app.templating import flash, render
 
 router = APIRouter(
@@ -95,7 +97,8 @@ def assignment_page(
 
 
 def _save_action(request: Request, db: Session, operation, **kwargs):
-    """서비스 변경과 승인 내역을 하나의 트랜잭션으로 저장한다."""
+    """업무·알림을 커밋한 뒤, 알림 ID만 백그라운드 작업에 전달한다."""
+    background = BackgroundTasks()
     try:
         result = operation(db, **kwargs)
         db.commit()
@@ -111,6 +114,16 @@ def _save_action(request: Request, db: Session, operation, **kwargs):
             "error",
         )
     else:
+        # commit 이후에는 ORM 객체나 요청 DB 세션을 다시 사용하지 않는다.
+        # 발송 함수는 자체 세션에서 데이터를 복사하고 잠금을 해제한다.
+        if result.notification_ids:
+            background.add_task(
+                dispatch_notifications,
+                result.notification_ids,
+                token=settings.slack_bot_token,
+                app_base_url=settings.app_base_url,
+            )
+
         flash(
             request,
             f"처리했습니다: {STATUS_LABELS[result.status]}",
@@ -130,7 +143,9 @@ def _save_action(request: Request, db: Session, operation, **kwargs):
                 )
             flash(request, message, "warning")
 
-    return RedirectResponse("/assignments", status_code=303)
+    return RedirectResponse(
+        "/assignments", status_code=303, background=background
+    )
 
 
 @router.post("/new", dependencies=[Depends(verify_csrf)])
