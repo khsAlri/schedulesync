@@ -18,7 +18,15 @@ from app.config import settings
 from app.database import init_db
 from app.deps import LoginRequired, PermissionDenied, require_user
 from app.models import User
-from app.routers import account, admin, assignments, auth, projects, schedule_changes
+from app.routers import (
+    account,
+    admin,
+    assignments,
+    auth,
+    notifications,
+    projects,
+    schedule_changes,
+)
 from app.templating import render
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -48,6 +56,7 @@ app.include_router(admin.router)
 app.include_router(projects.router)
 app.include_router(assignments.router)
 app.include_router(schedule_changes.router)
+app.include_router(notifications.router)
 
 
 # ---------------------------------------------------------------------------

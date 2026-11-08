@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
+from app.notification_queries import unread_count
 from app.security import is_valid_csrf_token
 
 
@@ -21,16 +22,20 @@ class PermissionDenied(Exception):
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User | None:
-    """세션의 로그인 사용자를 돌려준다. 없거나 비활성 계정이면 None."""
+    """세션의 로그인 사용자를 확인하고 메뉴용 미확인 알림 수를 계산한다."""
     user = None
     user_id = request.session.get("user_id")
     if user_id is not None:
         user = db.get(User, user_id)
         if user is None or not user.is_active:
-            # 삭제·비활성화된 계정은 즉시 로그아웃 처리한다.
             request.session.pop("user_id", None)
             user = None
+
     request.state.user = user
+    # 기존 요청 DB 세션을 재사용한다. 별도 세션으로 SQLite 잠금을 잡지 않는다.
+    request.state.unread_notification_count = (
+        unread_count(db, user.id) if user is not None else 0
+    )
     return user
 
 
