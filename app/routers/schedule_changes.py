@@ -2,12 +2,12 @@
 
 import json
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadData, URLSafeTimedSerializer
 from sqlalchemy import or_, select
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
 
 from app.assignment_rules import RuleViolation
 from app.config import settings
@@ -19,15 +19,15 @@ from app.models import (
     ScheduleChangeResponse,
     User,
 )
+from app.notification_service import dispatch_notifications
 from app.routers.projects import parse_schedules
 from app.schedule_change_models import ScheduleChangeBaseline
-from app.schedule_change_service import (
+from app.schedule_change_notifications import (
     cancel_change,
-    preview_change,
-    requested_schedules,
     respond_change,
     submit_change,
 )
+from app.schedule_change_service import preview_change, requested_schedules
 from app.templating import flash, render
 
 router = APIRouter(
@@ -41,7 +41,7 @@ signer = URLSafeTimedSerializer(
 )
 
 STATUS_LABELS = {
-    "pending": "承認・同意待ち",
+    "pending": "승인·동의 대기",
     "applied": "반영 완료",
     "rejected": "거부됨",
     "cancelled": "취소됨",
@@ -95,6 +95,30 @@ def _form(
         },
         status_code=status_code,
     )
+
+
+def _delivery_background(db: Session, result) -> BackgroundTasks:
+    """요청과 같은 엔진으로 새 세션을 만들며 요청 세션은 전달하지 않는다.
+
+    이 함수는 업무 commit 성공 후에만 호출한다.
+    get_bind는 엔진을 얻을 뿐 새 DB 트랜잭션을 시작하지 않는다.
+    테스트의 DB 의존성 대체 시에도 운영 DB를 사용하지 않는다.
+    """
+    background = BackgroundTasks()
+    if result.notification_ids:
+        sessions = sessionmaker(
+            bind=db.get_bind(),
+            autoflush=False,
+            expire_on_commit=False,
+        )
+        background.add_task(
+            dispatch_notifications,
+            result.notification_ids,
+            token=settings.slack_bot_token,
+            app_base_url=settings.app_base_url,
+            session_factory=sessions,
+        )
+    return background
 
 
 @router.get("")
@@ -289,8 +313,11 @@ def submit_form(
         flash(request, "DB 처리에 실패했습니다. 상태를 확인한 뒤 다시 시도하세요.", "error")
         return RedirectResponse("/schedule-changes", status_code=303)
 
+    background = _delivery_background(db, result)
     flash(request, f"일정 변경 처리: {STATUS_LABELS[result.status]}", "success")
-    return RedirectResponse("/schedule-changes", status_code=303)
+    return RedirectResponse(
+        "/schedule-changes", status_code=303, background=background
+    )
 
 
 @router.post("/{request_id}/respond", dependencies=[Depends(verify_csrf)])
@@ -333,6 +360,7 @@ def cancel_form(
 
 
 def _action(request: Request, db: Session, operation, **kwargs):
+    background = BackgroundTasks()
     try:
         result = operation(db, **kwargs)
         db.commit()
@@ -343,5 +371,8 @@ def _action(request: Request, db: Session, operation, **kwargs):
         db.rollback()
         flash(request, "DB 처리에 실패했습니다. 상태를 확인한 뒤 다시 시도하세요.", "error")
     else:
+        background = _delivery_background(db, result)
         flash(request, f"일정 변경 처리: {STATUS_LABELS[result.status]}", "success")
-    return RedirectResponse("/schedule-changes", status_code=303)
+    return RedirectResponse(
+        "/schedule-changes", status_code=303, background=background
+    )
