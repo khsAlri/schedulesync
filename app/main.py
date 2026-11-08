@@ -18,7 +18,7 @@ from app.config import settings
 from app.database import init_db
 from app.deps import LoginRequired, PermissionDenied, require_user
 from app.models import User
-from app.routers import account, admin, auth
+from app.routers import account, admin, auth, projects
 from app.templating import render
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -45,6 +45,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(auth.router)
 app.include_router(account.router)
 app.include_router(admin.router)
+app.include_router(projects.router)
 
 
 # ---------------------------------------------------------------------------

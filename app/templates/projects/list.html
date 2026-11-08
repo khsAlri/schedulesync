@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}프로젝트 · schedulesync{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <h1>프로젝트 및 참여 현황</h1>
+    {% if current_user.is_approver %}
+      <a class="btn btn-primary" href="/projects/new">프로젝트 등록</a>
+    {% endif %}
+  </div>
+
+  <p class="muted">전체 프로젝트 일정과 확정 참여자를 확인할 수 있습니다. 시각은 서버 현지 시각 기준입니다.</p>
+
+  {% if projects %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>프로젝트</th>
+            <th>등록한 허가권자</th>
+            <th>일정</th>
+            <th>확정 참여자</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for project in projects %}
+            <tr>
+              <td><a href="/projects/{{ project.id }}">{{ project.name }}</a></td>
+              <td>{{ project.owner.name }}</td>
+              <td>
+                {% for schedule in project.schedules %}
+                  <div>{{ schedule.start_at.strftime("%Y-%m-%d %H:%M") }} ~ {{ schedule.end_at.strftime("%Y-%m-%d %H:%M") }}</div>
+                {% else %}
+                  일정 없음
+                {% endfor %}
+              </td>
+              <td>
+                {% for assignment in project.assignments if assignment.status == confirmed_status %}
+                  <div>{{ assignment.user.name }}{% if assignment.user.department %} ({{ assignment.user.department }}){% endif %}</div>
+                {% else %}
+                  <span class="muted">확정 참여자 없음</span>
+                {% endfor %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="muted">등록된 프로젝트가 없습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

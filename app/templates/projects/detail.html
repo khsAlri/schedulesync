@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} · schedulesync{% endblock %}
+
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <h1>{{ project.name }}</h1>
+    {% if current_user.is_approver and current_user.id == project.owner_id %}
+      <a class="btn" href="/projects/{{ project.id }}/edit">프로젝트 수정</a>
+    {% endif %}
+  </div>
+
+  <p>등록한 허가권자: {{ project.owner.name }}</p>
+
+  <h2>설명</h2>
+  {% for line in project.description.splitlines() %}
+    <div>{{ line }}</div>
+  {% else %}
+    <p class="muted">설명이 없습니다.</p>
+  {% endfor %}
+
+  <h2>프로젝트 일정</h2>
+  <p class="muted small">서버 현지 시각 기준</p>
+  <ul>
+    {% for schedule in project.schedules %}
+      <li>{{ schedule.start_at.strftime("%Y-%m-%d %H:%M") }} ~ {{ schedule.end_at.strftime("%Y-%m-%d %H:%M") }}</li>
+    {% else %}
+      <li>등록된 일정이 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  <h2>확정 참여자</h2>
+  <ul>
+    {% for assignment in project.assignments if assignment.status == confirmed_status %}
+      <li>{{ assignment.user.name }}{% if assignment.user.department %} · {{ assignment.user.department }}{% endif %}</li>
+    {% else %}
+      <li class="muted">확정 참여자가 없습니다.</li>
+    {% endfor %}
+  </ul>
+
+  {% if current_user.is_approver and current_user.id == project.owner_id %}
+    <p class="muted small">직원 배정·수락·승인 기능은 4단계에서 추가됩니다.</p>
+  {% endif %}
+
+  <p><a href="/projects">프로젝트 목록으로</a></p>
+</section>
+{% endblock %}

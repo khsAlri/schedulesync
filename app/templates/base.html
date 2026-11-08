@@ -13,6 +13,7 @@
       {% block nav %}
         {% if current_user %}
           <a href="/">홈</a>
+          <a href="/projects">프로젝트</a>
           {% if current_user.is_admin %}
             <a href="/admin/users">계정 관리</a>
           {% endif %}
