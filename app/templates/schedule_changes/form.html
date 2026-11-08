@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}일정 변경 · {{ project.name }}{% endblock %}
+
+{% block content %}
+<section class="card">
+  <h1>{{ project.name }} · 일정 변경</h1>
+  <p class="muted">
+    수락·승인 대기 배정이 있으면 먼저 처리해야 합니다.
+    외부 프로젝트와 겹치면 해당 등록자의 승인과 영향을 받는 참여자의 동의를 받습니다.
+    모든 응답이 완료되기 전까지 원래 일정은 유지됩니다.
+  </p>
+
+  {% if error %}
+    <div class="flash flash-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <h2>현재 일정</h2>
+  <ul>
+    {% for item in project.schedules %}
+      <li>{{ item.start_at.strftime("%Y-%m-%d %H:%M") }} ~ {{ item.end_at.strftime("%Y-%m-%d %H:%M") }}</li>
+    {% endfor %}
+  </ul>
+
+  <form method="post" action="/schedule-changes/projects/{{ project.id }}/preview" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      변경 후 일정
+      <textarea name="schedules_text" rows="8" maxlength="10000" required aria-describedby="schedule-help">{{ schedules_text }}</textarea>
+    </label>
+    <p id="schedule-help" class="muted small">
+      서버 현지 시각 기준으로 한 줄에 하나씩 입력하세요.<br>
+      형식: 2026-11-10T09:00 / 2026-11-10T12:00<br>
+      최대 100개이며 같은 프로젝트 내부의 겹침은 허용하지 않습니다.
+    </p>
+    <button class="btn" type="submit">미리보기</button>
+  </form>
+</section>
+
+{% if preview %}
+<section class="card">
+  <h2>변경 내용 확인</h2>
+  <ul>
+    {% for start, end in preview.schedules %}
+      <li>{{ start.strftime("%Y-%m-%d %H:%M") }} ~ {{ end.strftime("%Y-%m-%d %H:%M") }}</li>
+    {% endfor %}
+  </ul>
+
+  {% if preview.plan.needs_warning %}
+    <div class="flash flash-warning" role="alert">
+      다른 확정 프로젝트와 시간이 겹칩니다.
+      상대 프로젝트도 본인 등록이면 승인·동의 없이 경고 확인 후 반영합니다.
+    </div>
+    <ul>
+      {% for user_id, other_project_id, owner_id in preview.plan.conflicts %}
+        <li>
+          {{ names.get(user_id, user_id) }} ·
+          <a href="/projects/{{ other_project_id }}">상대 프로젝트 #{{ other_project_id }}</a>
+          · 등록자 {{ names.get(owner_id, owner_id) }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>다른 확정 프로젝트와 겹치지 않습니다.</p>
+  {% endif %}
+
+  <h3>필요한 응답</h3>
+  <ul>
+    {% for user_id, kind in preview.plan.required_responses %}
+      <li>{{ names.get(user_id, user_id) }} · {{ kind_labels[kind] }}</li>
+    {% else %}
+      <li>별도 승인·동의 없이 저장 시 즉시 반영됩니다.</li>
+    {% endfor %}
+  </ul>
+
+  <form method="post" action="/schedule-changes/projects/{{ project.id }}/submit" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="preview_token" value="{{ preview_token }}">
+    {% if preview.plan.needs_warning %}
+      <label class="checkbox">
+        <input type="checkbox" name="warning_acknowledged" required>
+        표시된 시간 겹침 경고를 확인했습니다.
+      </label>
+    {% endif %}
+    <p class="muted small">
+      아래 버튼은 이 미리보기에 표시된 일정을 제출합니다.
+      위 입력을 수정했다면 반드시 미리보기를 다시 실행하세요.
+      미리보기는 30분 후 만료됩니다.
+    </p>
+    <button class="btn btn-primary" type="submit">
+      {% if preview.plan.needs_responses %}변경 요청 생성{% else %}변경 일정 저장{% endif %}
+    </button>
+  </form>
+</section>
+{% endif %}
+
+<p>
+  <a href="/projects/{{ project.id }}">프로젝트로 돌아가기</a>
+  · <a href="/schedule-changes">일정 변경 요청 목록</a>
+</p>
+{% endblock %}

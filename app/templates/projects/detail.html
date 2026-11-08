@@ -9,6 +9,7 @@
     {% if current_user.is_approver and current_user.id == project.owner_id %}
       <div class="actions">
         <a class="btn" href="/projects/{{ project.id }}/edit">프로젝트 수정</a>
+        <a class="btn" href="/schedule-changes/projects/{{ project.id }}/new">일정 변경</a>
         <a class="btn btn-primary" href="/assignments?project_id={{ project.id }}">직원 배정</a>
       </div>
     {% endif %}
@@ -42,6 +43,14 @@
     {% endfor %}
   </ul>
 
+  {% if current_user.is_approver and current_user.id == project.owner_id %}
+    <p class="muted small">
+      확정 참여자가 있는 프로젝트의 일정은 일정 변경 버튼에서 처리하세요.
+      수락·승인 대기 배정이 있으면 먼저 처리해야 합니다.
+    </p>
+  {% endif %}
+
+  <p><a href="/schedule-changes">관련 일정 변경 요청 확인</a></p>
   <p><a href="/assignments">관련 배정·승인 확인</a></p>
   <p><a href="/projects">프로젝트 목록으로</a></p>
 </section>
