@@ -59,6 +59,6 @@ def get_db() -> Iterator[Session]:
 
 def init_db() -> None:
     """없는 테이블만 만든다. 기존 테이블 구조를 변경하지 않는다."""
-    from app import models  # noqa: F401
+    from app import models, schedule_change_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
