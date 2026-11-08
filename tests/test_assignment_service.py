@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import create_engine, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 # 모듈 로딩에 필요한 설정만 제공한다. 실제 테스트는 별도 엔진을 사용한다.
@@ -126,7 +127,10 @@ class AssignmentServiceTests(unittest.TestCase):
     def test_employee_requires_both_approvals(self):
         assignment = self.assign()
         self.assertEqual(assignment.status, "pending_accept")
-        self.assertEqual(self.accept(assignment.assignment_id).status, "pending_approval")
+        self.assertEqual(
+            self.accept(assignment.assignment_id).status,
+            "pending_approval",
+        )
 
         with Session(self.engine) as db:
             approvals = db.scalars(
@@ -134,7 +138,10 @@ class AssignmentServiceTests(unittest.TestCase):
                     Approval.assignment_id == assignment.assignment_id
                 )
             ).all()
-            self.assertEqual({item.approver_id for item in approvals}, {1, 2})
+            self.assertEqual(
+                {item.approver_id for item in approvals},
+                {1, 2},
+            )
 
         self.assertEqual(
             self.approve(assignment.assignment_id, 2).status,
@@ -170,7 +177,9 @@ class AssignmentServiceTests(unittest.TestCase):
         assignment = self.assign()
         self.accept(assignment.assignment_id)
         self.approve(assignment.assignment_id, 1)
-        result = self.approve(assignment.assignment_id, 2, approve=False)
+        result = self.approve(
+            assignment.assignment_id, 2, approve=False
+        )
         self.assertEqual(result.status, "rejected")
         with self.assertRaises(RuleViolation):
             self.approve(assignment.assignment_id, 2)
@@ -185,7 +194,9 @@ class AssignmentServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.status, "declined")
         replacement = self.assign()
-        self.assertNotEqual(replacement.assignment_id, assignment.assignment_id)
+        self.assertNotEqual(
+            replacement.assignment_id, assignment.assignment_id
+        )
 
     def test_approver_acceptance_needs_no_approvals(self):
         assignment = self.assign(target=2)
@@ -234,14 +245,37 @@ class AssignmentServiceTests(unittest.TestCase):
                     Approval.approver_id == 2,
                 )
             )
-            self.assertEqual(assignment.status, AssignmentStatus.PENDING_APPROVAL)
+            self.assertEqual(
+                assignment.status, AssignmentStatus.PENDING_APPROVAL
+            )
             self.assertEqual(approval.decision, Decision.PENDING)
 
         # 겹침이 있어도 반려는 가능하다.
         self.assertEqual(
-            self.approve(first.assignment_id, 2, approve=False).status,
+            self.approve(
+                first.assignment_id, 2, approve=False
+            ).status,
             "rejected",
         )
+
+    def test_adjacent_projects_can_both_be_confirmed(self):
+        with Session(self.engine) as db:
+            project = db.get(Project, 2)
+            project.schedules[0].start_at = datetime(2026, 11, 10, 12)
+            project.schedules[0].end_at = datetime(2026, 11, 10, 15)
+            db.commit()
+
+        first = self.assign()
+        self.accept(first.assignment_id)
+        self.approve(first.assignment_id, 1)
+        self.approve(first.assignment_id, 2)
+
+        second = self.assign(actor=2, project=2)
+        self.assertEqual(second.conflicts, ())
+        self.accept(second.assignment_id)
+        self.approve(second.assignment_id, 1)
+        result = self.approve(second.assignment_id, 2)
+        self.assertEqual(result.status, "confirmed")
 
     def test_inactive_target_is_blocked(self):
         with Session(self.engine) as db:
@@ -261,19 +295,57 @@ class AssignmentServiceTests(unittest.TestCase):
         with self.assertRaises(RuleViolation):
             self.approve(assignment.assignment_id, 1)
 
-    def test_second_sqlite_writer_waits_instead_of_reading_stale_state(self):
-        # 첫 트랜잭션이 종료될 때까지 두 번째 쓰기 시작이 차단되는지 검사한다.
-        from sqlalchemy.exc import OperationalError
+    def test_inactive_approver_blocks_approval(self):
+        assignment = self.assign()
+        self.accept(assignment.assignment_id)
 
+        with Session(self.engine) as db:
+            db.get(User, 2).is_active = False
+            db.commit()
+
+        with self.assertRaises(RuleViolation):
+            self.approve(assignment.assignment_id, 1)
+
+        with Session(self.engine) as db:
+            self.assertEqual(
+                db.get(Assignment, assignment.assignment_id).status,
+                AssignmentStatus.PENDING_APPROVAL,
+            )
+            approvals = db.scalars(
+                select(Approval).where(
+                    Approval.assignment_id == assignment.assignment_id
+                )
+            ).all()
+            self.assertTrue(
+                all(item.decision == Decision.PENDING for item in approvals)
+            )
+
+    def test_second_sqlite_writer_is_blocked_then_can_retry(self):
         with self.engine.connect() as first:
-            transaction = first.begin()
             with self.engine.connect() as second:
-                second.exec_driver_sql("PRAGMA busy_timeout=1")
-                second.commit()
-                with self.assertRaises(OperationalError):
-                    second.begin()
-                second.rollback()
-            transaction.rollback()
+                # exec_driver_sql을 쓰면 autobegin 이벤트가 실행된다.
+                # 잠금을 잡기 전에 DBAPI 연결에 직접 제한 시간만 설정한다.
+                raw_connection = second.connection.driver_connection
+                cursor = raw_connection.cursor()
+                try:
+                    cursor.execute("PRAGMA busy_timeout=1")
+                finally:
+                    cursor.close()
+
+                transaction = first.begin()
+                try:
+                    with self.assertRaises(OperationalError):
+                        second.begin()
+                    second.rollback()
+                finally:
+                    transaction.rollback()
+
+                # 첫 트랜잭션 종료 후에는 정상적으로 시작할 수 있어야 한다.
+                with second.begin():
+                    self.assertEqual(
+                        second.exec_driver_sql("SELECT 1").scalar_one(),
+                        1,
+                    )
 
 
 if __name__ == "__main__":
