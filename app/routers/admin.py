@@ -1,10 +1,11 @@
 """시스템 관리자: 계정 발급·관리."""
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.config import settings
 from app.database import get_db
 from app.deps import require_admin, verify_csrf
 from app.models import Assignment, Project, Role, User
@@ -15,6 +16,7 @@ from app.security import (
     normalize_email,
     validate_password,
 )
+from app.slack_mapping import connect_slack_user
 from app.templating import flash, render
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
@@ -163,6 +165,7 @@ def user_create(
     department: str = Form(""),
     slack_user_id: str = Form(""),
     password: str = Form(""),
+    admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     form = {
@@ -197,15 +200,49 @@ def user_create(
         password_hash=hash_password(password),
     )
     db.add(user)
+    db.flush()
+
+    # コミット後の処理にORMオブジェクトやリクエストセッションを渡さない。
+    user_id = user.id
+    admin_id = admin.id
+    sessions = sessionmaker(
+        bind=db.get_bind(),
+        autoflush=False,
+        expire_on_commit=False,
+    )
+    should_lookup = bool(
+        settings.slack_bot_token and not form["slack_user_id"]
+    )
+
+    # 警告の問い合わせも同じトランザクション内で終える。
+    _warn_approver_count(request, db)
     db.commit()
+
+    background = BackgroundTasks()
+    if should_lookup:
+        background.add_task(
+            connect_slack_user,
+            user_id=user_id,
+            expected_email=form["email"],
+            admin_id=admin_id,
+            token=settings.slack_bot_token,
+            session_factory=sessions,
+        )
+        flash(
+            request,
+            "슬랙 사용자 자동 조회를 예약했습니다. 잠시 후 계정 목록을 새로고침해 "
+            "연결 여부를 확인하세요. 미연결이면 계정 수정에서 직접 입력할 수 있습니다.",
+            "info",
+        )
 
     flash(
         request,
-        f"{user.name}님의 계정을 발급했습니다. 초기 비밀번호를 본인에게 안전하게 전달하세요.",
+        f"{form['name']}님의 계정을 발급했습니다. 초기 비밀번호를 본인에게 안전하게 전달하세요.",
         "success",
     )
-    _warn_approver_count(request, db)
-    return RedirectResponse("/admin/users", status_code=303)
+    return RedirectResponse(
+        "/admin/users", status_code=303, background=background
+    )
 
 
 # ---------------------------------------------------------------------------
