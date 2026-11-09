@@ -2,99 +2,69 @@
 
 {% block title %}배정·승인 · schedulesync{% endblock %}
 
-{% block content %}
-{% if current_user.is_approver %}
-<section class="card">
-  <h1>직원 배정</h1>
-  {% if owned_projects and targets %}
-    <p class="muted">
-      자신이 등록한 프로젝트에만 배정할 수 있습니다.
-      본인을 선택하면 즉시 확정되며, 다른 확정 프로젝트와 겹쳐도 경고 후 허용됩니다.
-      다른 허가권자는 수락으로, 일반 직원은 수락 후 허가권자 전원 승인으로 확정됩니다.
-    </p>
+{% block content %} {% if current_user.is_approver %}
 
-    <form method="post" action="/assignments/new" class="form">
+<section class="card"> <h1>직원 배정</h1> {% if owned_projects and targets %} <p class="muted"> 자신이 등록한 프로젝트에만 배정할 수 있습니다. 본인을 선택하면 즉시 확정되며, 다른 확정 프로젝트와 겹쳐도 경고 후 허용됩니다. 다른 허가권자는 수락으로, 일반 직원은 수락 후 허가권자 전원 승인으로 확정됩니다. </p>
+<form method="post" action="/assignments/new" class="form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    프로젝트
+    <select name="project_id" required>
+      {% for project in owned_projects %}
+        <option value="{{ project.id }}" {% if project.id == selected_project_id %}selected{% endif %}>{{ project.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    배정할 직원
+    <select name="target_id" required>
+      <option value="" selected disabled>직원을 선택하세요</option>
+      {% for target in targets %}
+        <option value="{{ target.id }}">
+          {{ target.name }} · {{ role_label(target.role) }}{% if target.department %} · {{ target.department }}{% endif %}{% if target.id == current_user.id %} · 본인{% endif %}
+        </option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit" class="btn btn-primary">배정</button>
+</form>
+{% else %} <p>먼저 <a href="/projects/new">본인 프로젝트를 등록</a>하고 배정할 계정을 확인하세요.</p> {% endif %}
+
+</section> {% endif %} <section class="card"> <h1>관련 배정 및 승인</h1> <p class="muted"> 내가 받은 배정, 내 프로젝트의 배정, 내가 승인자로 지정된 배정을 표시합니다. 확정 참여자는 프로젝트 화면에서 전 직원이 확인할 수 있습니다. </p> <p class="muted small"> 시간 겹침은 승인·확정 직전에 다시 검사합니다. 배정·수락 요청과 확정·반려 결과는 사이트 내 알림으로 저장하며, 슬랙 연결 시 DM도 발송합니다. 부분 승인 알림과 대기 리마인드는 보내지 않습니다. </p>
+{% for assignment in related %} <section class="card"> <h2> <a href="/projects/{{ assignment.project_id }}">{{ assignment.project.name }}</a> · {{ assignment.user.name }} </h2> <p>상태: <strong>{{ status_labels[assignment.status.value] }}</strong></p>
+
+  {% if assignment.status.value == "pending_accept" and assignment.user_id == current_user.id %}
+    <form method="post" action="/assignments/{{ assignment.id }}/respond" class="actions">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label>
-        프로젝트
-        <select name="project_id" required>
-          {% for project in owned_projects %}
-            <option value="{{ project.id }}" {% if project.id == selected_project_id %}selected{% endif %}>{{ project.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>
-        배정할 직원
-        <select name="target_id" required>
-          <option value="" selected disabled>직원을 선택하세요</option>
-          {% for target in targets %}
-            <option value="{{ target.id }}">
-              {{ target.name }} · {{ role_label(target.role) }}{% if target.department %} · {{ target.department }}{% endif %}{% if target.id == current_user.id %} · 본인{% endif %}
-            </option>
-          {% endfor %}
-        </select>
-      </label>
-      <button type="submit" class="btn btn-primary">배정</button>
+      <button type="submit" name="response" value="accept" class="btn btn-primary">수락</button>
+      <button type="submit" name="response" value="decline" class="btn">거절</button>
     </form>
-  {% else %}
-    <p>먼저 <a href="/projects/new">본인 프로젝트를 등록</a>하고 배정할 계정을 확인하세요.</p>
+  {% endif %}
+
+  {% if assignment.approvals %}
+    <h3>허가권자 응답</h3>
+    <ul>
+      {% for approval in assignment.approvals %}
+        <li>
+          {{ approval.approver.name }}: {{ decision_labels[approval.decision.value] }}
+          {% if approval.decided_at %} · {{ approval.decided_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if assignment.status.value == "pending_approval" and current_user.is_approver %}
+      {% for approval in assignment.approvals %}
+        {% if approval.approver_id == current_user.id and approval.decision.value == "pending" %}
+          <form method="post" action="/assignments/{{ assignment.id }}/decide" class="actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" name="decision" value="approve" class="btn btn-primary">승인</button>
+            <button type="submit" name="decision" value="reject" class="btn">반려</button>
+          </form>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
   {% endif %}
 </section>
-{% endif %}
+{% else %} <p class="muted">관련 배정이 없습니다.</p> {% endfor %}
 
-<section class="card">
-  <h1>관련 배정 및 승인</h1>
-  <p class="muted">
-    내가 받은 배정, 내 프로젝트의 배정, 내가 승인자로 지정된 배정을 표시합니다.
-    확정 참여자는 프로젝트 화면에서 전 직원이 확인할 수 있습니다.
-  </p>
-  <p class="muted small">
-    시간 겹침은 승인·확정 직전에 다시 검사합니다.
-    배정·승인 알림 발송은 아직 연결되지 않았습니다.
-  </p>
-
-  {% for assignment in related %}
-    <section class="card">
-      <h2>
-        <a href="/projects/{{ assignment.project_id }}">{{ assignment.project.name }}</a>
-        · {{ assignment.user.name }}
-      </h2>
-      <p>상태: <strong>{{ status_labels[assignment.status.value] }}</strong></p>
-
-      {% if assignment.status.value == "pending_accept" and assignment.user_id == current_user.id %}
-        <form method="post" action="/assignments/{{ assignment.id }}/respond" class="actions">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <button type="submit" name="response" value="accept" class="btn btn-primary">수락</button>
-          <button type="submit" name="response" value="decline" class="btn">거절</button>
-        </form>
-      {% endif %}
-
-      {% if assignment.approvals %}
-        <h3>허가권자 응답</h3>
-        <ul>
-          {% for approval in assignment.approvals %}
-            <li>
-              {{ approval.approver.name }}: {{ decision_labels[approval.decision.value] }}
-              {% if approval.decided_at %} · {{ approval.decided_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-
-        {% if assignment.status.value == "pending_approval" and current_user.is_approver %}
-          {% for approval in assignment.approvals %}
-            {% if approval.approver_id == current_user.id and approval.decision.value == "pending" %}
-              <form method="post" action="/assignments/{{ assignment.id }}/decide" class="actions">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" name="decision" value="approve" class="btn btn-primary">승인</button>
-                <button type="submit" name="decision" value="reject" class="btn">반려</button>
-              </form>
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-      {% endif %}
-    </section>
-  {% else %}
-    <p class="muted">관련 배정이 없습니다.</p>
-  {% endfor %}
-</section>
-{% endblock %}
+</section> {% endblock %} 
