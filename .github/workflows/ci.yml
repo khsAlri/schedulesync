@@ -1,43 +1,54 @@
 name: Python tests
 
-on: push: pull_request: workflow_dispatch:
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
 
-permissions: contents: read
+permissions:
+  contents: read
 
-jobs: tests: runs-on: ubuntu-latest timeout-minutes: 15 strategy: fail-fast: false matrix: python-version: ["3.11", "3.12"]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
 
-env:
-  APP_ENV: development
-  APP_BASE_URL: http://localhost:8000
-  DATABASE_URL: sqlite:///:memory:
-  SESSION_HTTPS_ONLY: "false"
-  ALLOWED_HOSTS: localhost,127.0.0.1,testserver
-  SLACK_BOT_TOKEN: ""
-  TZ: Asia/Seoul
+    env:
+      APP_ENV: development
+      APP_BASE_URL: http://localhost:8000
+      DATABASE_URL: "sqlite:///:memory:"
+      SESSION_HTTPS_ONLY: "false"
+      ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      SLACK_BOT_TOKEN: ""
+      TZ: Asia/Seoul
 
-steps:
-  - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  - uses: actions/setup-python@v5
-    with:
-      python-version: ${{ matrix.python-version }}
-      cache: pip
-      cache-dependency-path: |
-        requirements.txt
-        requirements-dev.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
-  - name: Generate test-only session key
-    run: |
-      python -c "import os,secrets; f=open(os.environ['GITHUB_ENV'],'a'); f.write('SECRET_KEY='+secrets.token_urlsafe(48)+'\n'); f.close()"
+      - name: Generate test-only session key
+        run: |
+          python -c "import os,secrets; f=open(os.environ['GITHUB_ENV'],'a'); f.write('SECRET_KEY='+secrets.token_urlsafe(48)+'\n'); f.close()"
 
-  - name: Install dependencies
-    run: |
-      python -m pip install --upgrade pip
-      python -m pip install -r requirements-dev.txt
-      python -m pip check
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+          python -m pip check
 
-  - name: Check Python syntax
-    run: python -m compileall -q app tests
+      - name: Check Python syntax
+        run: python -m compileall -q app tests
 
-  - name: Run all tests
-    run: python -m unittest discover -s tests -v
+      - name: Run all tests
+        run: python -m unittest discover -s tests -v
