@@ -1,208 +1,73 @@
 """배정·수락·승인 화면과 POST 처리."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
-from fastapi.responses import RedirectResponse
-from sqlalchemy import or_, select
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request from fastapi.responses import RedirectResponse from sqlalchemy import or_, select from sqlalchemy.exc import OperationalError from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
 
-from app.assignment_rules import RuleViolation
-from app.assignment_notifications import (
-    create_assignment,
-    decide_assignment,
-    respond_assignment,
+from app.assignment_rules import RuleViolation from app.assignment_notifications import ( create_assignment, decide_assignment, respond_assignment, ) from app.config import settings from app.database import get_db from app.deps import require_user, verify_csrf from app.models import Approval, Assignment, Project, Role, User from app.notification_service import dispatch_notifications from app.templating import flash, render
+
+router = APIRouter( prefix="/assignments", dependencies=[Depends(require_user)], )
+
+STATUS_LABELS = { "pending_accept": "수락 대기", "pending_approval": "승인 대기", "confirmed": "참여 확정", "declined": "배정 거절", "rejected": "전체 반려", "cancelled": "배정 취소", }
+
+DECISION_LABELS = { "pending": "대기", "approved": "승인", "rejected": "반려", }
+
+@router.get("") def assignment_page( request: Request, project_id: int | None = None, user: User = Depends(require_user), db: Session = Depends(get_db), ): owned_projects = [] targets = [] if user.is_approver: owned_projects = db.scalars( select(Project) .where(Project.owner_id == user.id) .order_by(Project.id.desc()) ).all() targets = db.scalars( select(User) .where( User.is_active.is_(True), User.role.in_([Role.APPROVER, Role.EMPLOYEE]), ) .order_by(User.name, User.id) ).all()
+
+related = db.scalars(
+    select(Assignment)
+    .join(Project, Assignment.project_id == Project.id)
+    .where(
+        or_(
+            Assignment.user_id == user.id,
+            Project.owner_id == user.id,
+            Assignment.approvals.any(Approval.approver_id == user.id),
+        )
+    )
+    .options(
+        joinedload(Assignment.project),
+        joinedload(Assignment.user),
+        selectinload(Assignment.approvals).joinedload(Approval.approver),
+    )
+    .order_by(Assignment.id.desc())
+).all()
+
+return render(
+    request,
+    "assignments.html",
+    {
+        "owned_projects": owned_projects,
+        "targets": targets,
+        "related": related,
+        "selected_project_id": project_id,
+        "status_labels": STATUS_LABELS,
+        "decision_labels": DECISION_LABELS,
+    },
 )
-from app.config import settings
-from app.database import get_db
-from app.deps import require_user, verify_csrf
-from app.models import Approval, Assignment, Project, Role, User
-from app.notification_service import dispatch_notifications
-from app.templating import flash, render
+def _save_action(request: Request, db: Session, operation, **kwargs): """업무·알림 커밋 후 동일 엔진의 독립 세션으로 발송한다.""" background = BackgroundTasks() try: result = operation(db, **kwargs) db.commit() except RuleViolation as exc: db.rollback() flash(request, str(exc), "error") except OperationalError: db.rollback() flash( request, "DB 처리에 실패했습니다. 다른 요청이 처리 중일 수 있습니다. " "화면을 새로고침해 상태를 확인한 뒤 다시 시도하세요.", "error", ) else: if result.notification_ids: sessions = sessionmaker( bind=db.get_bind(), autoflush=False, expire_on_commit=False, ) background.add_task( dispatch_notifications, result.notification_ids, token=settings.slack_bot_token, app_base_url=settings.app_base_url, session_factory=sessions, )
 
-router = APIRouter(
-    prefix="/assignments",
-    dependencies=[Depends(require_user)],
+    flash(
+        request,
+        f"처리했습니다: {STATUS_LABELS[result.status]}",
+        "success",
+    )
+    if result.conflicts:
+        project_ids = ", ".join(str(value) for value in result.conflicts)
+        if result.status == "confirmed":
+            message = (
+                f"다른 확정 프로젝트(ID: {project_ids})와 시간이 겹칩니다. "
+                "본인 프로젝트에 본인을 투입한 경우이므로 예외적으로 확정했습니다."
+            )
+        else:
+            message = (
+                f"다른 확정 프로젝트(ID: {project_ids})와 시간이 겹칩니다. "
+                "일정 겹침이 해소되기 전에는 참여를 확정할 수 없습니다."
+            )
+        flash(request, message, "warning")
+
+return RedirectResponse(
+    "/assignments", status_code=303, background=background
 )
+@router.post("/new", dependencies=[Depends(verify_csrf)]) def assign( request: Request, project_id: int = Form(...), target_id: int = Form(...), user: User = Depends(require_user), db: Session = Depends(get_db), ): return _save_action( request, db, create_assignment, actor_id=user.id, project_id=project_id, target_id=target_id, )
 
-STATUS_LABELS = {
-    "pending_accept": "수락 대기",
-    "pending_approval": "승인 대기",
-    "confirmed": "참여 확정",
-    "declined": "배정 거절",
-    "rejected": "전체 반려",
-    "cancelled": "배정 취소",
-}
+@router.post("/{assignment_id}/respond", dependencies=[Depends(verify_csrf)]) def respond( request: Request, assignment_id: int, response: str = Form(""), user: User = Depends(require_user), db: Session = Depends(get_db), ): if response not in {"accept", "decline"}: flash(request, "수락 또는 거절을 선택하세요.", "error") return RedirectResponse("/assignments", status_code=303) return _save_action( request, db, respond_assignment, actor_id=user.id, assignment_id=assignment_id, accept=response == "accept", )
 
-DECISION_LABELS = {
-    "pending": "대기",
-    "approved": "승인",
-    "rejected": "반려",
-}
-
-
-@router.get("")
-def assignment_page(
-    request: Request,
-    project_id: int | None = None,
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    owned_projects = []
-    targets = []
-    if user.is_approver:
-        owned_projects = db.scalars(
-            select(Project)
-            .where(Project.owner_id == user.id)
-            .order_by(Project.id.desc())
-        ).all()
-        targets = db.scalars(
-            select(User)
-            .where(
-                User.is_active.is_(True),
-                User.role.in_([Role.APPROVER, Role.EMPLOYEE]),
-            )
-            .order_by(User.name, User.id)
-        ).all()
-
-    related = db.scalars(
-        select(Assignment)
-        .join(Project, Assignment.project_id == Project.id)
-        .where(
-            or_(
-                Assignment.user_id == user.id,
-                Project.owner_id == user.id,
-                Assignment.approvals.any(Approval.approver_id == user.id),
-            )
-        )
-        .options(
-            joinedload(Assignment.project),
-            joinedload(Assignment.user),
-            selectinload(Assignment.approvals).joinedload(Approval.approver),
-        )
-        .order_by(Assignment.id.desc())
-    ).all()
-
-    return render(
-        request,
-        "assignments.html",
-        {
-            "owned_projects": owned_projects,
-            "targets": targets,
-            "related": related,
-            "selected_project_id": project_id,
-            "status_labels": STATUS_LABELS,
-            "decision_labels": DECISION_LABELS,
-        },
-    )
-
-
-def _save_action(request: Request, db: Session, operation, **kwargs):
-    """업무·알림을 커밋한 뒤, 알림 ID만 백그라운드 작업에 전달한다."""
-    background = BackgroundTasks()
-    try:
-        result = operation(db, **kwargs)
-        db.commit()
-    except RuleViolation as exc:
-        db.rollback()
-        flash(request, str(exc), "error")
-    except OperationalError:
-        db.rollback()
-        flash(
-            request,
-            "DB 처리에 실패했습니다. 다른 요청이 처리 중일 수 있습니다. "
-            "화면을 새로고침해 상태를 확인한 뒤 다시 시도하세요.",
-            "error",
-        )
-    else:
-        # commit 이후에는 ORM 객체나 요청 DB 세션을 다시 사용하지 않는다.
-        # 발송 함수는 자체 세션에서 데이터를 복사하고 잠금을 해제한다.
-        if result.notification_ids:
-            background.add_task(
-                dispatch_notifications,
-                result.notification_ids,
-                token=settings.slack_bot_token,
-                app_base_url=settings.app_base_url,
-            )
-
-        flash(
-            request,
-            f"처리했습니다: {STATUS_LABELS[result.status]}",
-            "success",
-        )
-        if result.conflicts:
-            project_ids = ", ".join(str(value) for value in result.conflicts)
-            if result.status == "confirmed":
-                message = (
-                    f"다른 확정 프로젝트(ID: {project_ids})와 시간이 겹칩니다. "
-                    "본인 프로젝트에 본인을 투입한 경우이므로 예외적으로 확정했습니다."
-                )
-            else:
-                message = (
-                    f"다른 확정 프로젝트(ID: {project_ids})와 시간이 겹칩니다. "
-                    "일정 겹침이 해소되기 전에는 참여를 확정할 수 없습니다."
-                )
-            flash(request, message, "warning")
-
-    return RedirectResponse(
-        "/assignments", status_code=303, background=background
-    )
-
-
-@router.post("/new", dependencies=[Depends(verify_csrf)])
-def assign(
-    request: Request,
-    project_id: int = Form(...),
-    target_id: int = Form(...),
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    return _save_action(
-        request,
-        db,
-        create_assignment,
-        actor_id=user.id,
-        project_id=project_id,
-        target_id=target_id,
-    )
-
-
-@router.post("/{assignment_id}/respond", dependencies=[Depends(verify_csrf)])
-def respond(
-    request: Request,
-    assignment_id: int,
-    response: str = Form(""),
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    if response not in {"accept", "decline"}:
-        flash(request, "수락 또는 거절을 선택하세요.", "error")
-        return RedirectResponse("/assignments", status_code=303)
-    return _save_action(
-        request,
-        db,
-        respond_assignment,
-        actor_id=user.id,
-        assignment_id=assignment_id,
-        accept=response == "accept",
-    )
-
-
-@router.post("/{assignment_id}/decide", dependencies=[Depends(verify_csrf)])
-def decide(
-    request: Request,
-    assignment_id: int,
-    decision: str = Form(""),
-    user: User = Depends(require_user),
-    db: Session = Depends(get_db),
-):
-    if decision not in {"approve", "reject"}:
-        flash(request, "승인 또는 반려를 선택하세요.", "error")
-        return RedirectResponse("/assignments", status_code=303)
-    return _save_action(
-        request,
-        db,
-        decide_assignment,
-        actor_id=user.id,
-        assignment_id=assignment_id,
-        approve=decision == "approve",
-    )
+@router.post("/{assignment_id}/decide", dependencies=[Depends(verify_csrf)]) def decide( request: Request, assignment_id: int, decision: str = Form(""), user: User = Depends(require_user), db: Session = Depends(get_db), ): if decision not in {"approve", "reject"}: flash(request, "승인 또는 반려를 선택하세요.", "error") return RedirectResponse("/assignments", status_code=303) return _save_action( request, db, decide_assignment, actor_id=user.id, assignment_id=assignment_id, approve=decision == "approve", ) 
